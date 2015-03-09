@@ -34,10 +34,6 @@ Source27:	OVSCleanup.ocf_ra
 Source28:	NeutronScale.ocf_ra
 
 Source30:	neutron-dist.conf
-#
-# patches_base=+1
-#
-Patch0001: 0001-remove-runtime-dependency-on-pbr.patch
 
 BuildArch:	noarch
 
@@ -108,7 +104,6 @@ Requires:	python-keystoneclient >= 0.10.0
 Requires:	python-keystonemiddleware >= 1.0.0
 Requires:	python-netaddr >= 0.7.12
 Requires:	python-neutronclient >= 2.3.6
-Conflicts:	python-neutronclient >= 3
 Requires:	python-novaclient >= 2.18.0
 Requires:	python-oslo-config >= 2:1.4.0
 Requires:	python-oslo-db >= 1.0.0
@@ -119,16 +114,19 @@ Requires:	python-oslo-utils >= 1.1.0
 Requires:	python-oslo-context
 Requires:	python-paste
 Requires:	python-paste-deploy >= 1.5.0
+Requires:	python-pbr
 Requires:	python-qpid
 Requires:	python-requests >= 1.2.1
 Requires:	python-routes >= 1.12.3
-Conflicts:	python-routes = 2.0
 Requires:	python-sqlalchemy >= 0.9.7
-Conflicts:	python-sqlalchemy >= 1.0
 Requires:	python-stevedore >= 1.0.0
 Requires:	python-six >= 1.7.0
 Requires:	python-webob >= 1.2.3
 Requires:	sudo
+Requires:	python-retrying
+Requires:	python-oslo-concurrency
+Requires:	python-oslo-i18n
+Requires:	python-oslo-middleware
 
 
 
@@ -226,7 +224,7 @@ L3-L7 network services using Embrane's heleos platform.
 
 
 %package hyperv
-Summary:	Neutron Hyper-V plugin
+Summary:	Neutron Hyper-V agent
 Group:		Applications/System
 
 Provides:	openstack-quantum-hyperv = %{version}-%{release}
@@ -239,7 +237,7 @@ Requires:	openstack-neutron = %{version}-%{release}
 Neutron provides an API to dynamically request and configure virtual
 networks.
 
-This package contains the Neutron plugin that implements virtual
+This package contains the Neutron agent that implements virtual
 networks using Microsoft Hyper-V.
 
 
@@ -503,23 +501,13 @@ SR-IOV network cards.
 %prep
 %setup -q -n neutron-%{upstream_version}
 
-%patch0001 -p1
-
 find neutron -name \*.py -exec sed -i '/\/usr\/bin\/env python/{d;q}' {} +
-
-sed -i 's/RPMVERSION/%{version}/; s/RPMRELEASE/%{release}/' neutron/version.py
-
-# Ensure SOURCES.txt ends in a newline and if any patches have added files, append them to SOURCES.txt
-[ -n "$(tail -c 1 < neutron.egg-info/SOURCES.txt)" ] && echo >> neutron.egg-info/SOURCES.txt
-if ls %{_sourcedir}/*.patch >/dev/null 2>&1; then
-  awk '/^new file/ {split(a,files," ");print substr(files[3],3)} {a = $0}' %{_sourcedir}/*.patch >> neutron.egg-info/SOURCES.txt
-fi
 
 # Let's handle dependencies ourseleves
 rm -f requirements.txt
 
 %build
-%{__python} setup.py build
+%{__python2} setup.py build
 
 # Loop through values in neutron-dist.conf and make sure that the values
 # are substituted into the neutron.conf as comments. Some of these values
@@ -538,12 +526,12 @@ while read name eq value; do
 done < %{SOURCE30}
 
 %install
-%{__python} setup.py install -O1 --skip-build --root %{buildroot}
+%{__python2} setup.py install -O1 --skip-build --root %{buildroot}
 
 # Remove unused files
-rm -rf %{buildroot}%{python_sitelib}/bin
-rm -rf %{buildroot}%{python_sitelib}/doc
-rm -rf %{buildroot}%{python_sitelib}/tools
+rm -rf %{buildroot}%{python2_sitelib}/bin
+rm -rf %{buildroot}%{python2_sitelib}/doc
+rm -rf %{buildroot}%{python2_sitelib}/tools
 rm %{buildroot}/usr/etc/init.d/neutron-server
 
 # Move rootwrap files to proper location
@@ -729,24 +717,22 @@ exit 0
 %{_datarootdir}/neutron/rootwrap/ipset-firewall.filters
 %{_datarootdir}/neutron/rootwrap/iptables-firewall.filters
 %{_datarootdir}/neutron/rootwrap/l3.filters
-%{_datarootdir}/neutron/rootwrap/ofagent.filters
 
 
 %files -n python-neutron-tests
-%{python_sitelib}/neutron/tests
+%{python2_sitelib}/neutron/tests
 
 
 %files -n python-neutron
 %doc LICENSE
 %doc README.rst
-%{python_sitelib}/neutron
-%{python_sitelib}/neutron-*.egg-info
-%exclude %{python_sitelib}/neutron/tests
+%{python2_sitelib}/neutron
+%{python2_sitelib}/neutron-*.egg-info
+%exclude %{python2_sitelib}/neutron/tests
 
 
 %files bigswitch
 %doc LICENSE
-%doc neutron/plugins/bigswitch/README
 %{_bindir}/neutron-restproxy-agent
 %dir %{_sysconfdir}/neutron/plugins/bigswitch
 %{_sysconfdir}/neutron/plugins/bigswitch/ssl
@@ -778,10 +764,7 @@ exit 0
 
 %files hyperv
 %doc LICENSE
-#%doc neutron/plugins/hyperv/README
 %{_bindir}/neutron-hyperv-agent
-%dir %{_sysconfdir}/neutron/plugins/hyperv
-%config(noreplace) %attr(0640, root, neutron) %{_sysconfdir}/neutron/plugins/hyperv/*.ini
 
 
 %files ibm
@@ -844,15 +827,13 @@ exit 0
 
 %files nuage
 %doc LICENSE
-%{python_sitelib}/neutron/plugins/nuage
+%{python2_sitelib}/neutron/plugins/nuage
 %dir %{_sysconfdir}/neutron/plugins/nuage
 %config(noreplace) %attr(0640, root, neutron) %{_sysconfdir}/neutron/plugins/nuage/*.ini
 
 
 %files ofagent
 %doc LICENSE
-%doc neutron/plugins/ofagent/README
-%{_bindir}/neutron-ofagent-agent
 
 
 %files oneconvergence-nvsd
@@ -889,8 +870,6 @@ exit 0
 
 %files vmware
 %doc LICENSE
-%{_bindir}/neutron-check-nsx-config
-%{_bindir}/neutron-nsx-manage
 %dir %{_sysconfdir}/neutron/plugins/vmware
 %config(noreplace) %attr(0640, root, neutron) %{_sysconfdir}/neutron/plugins/vmware/*.ini
 
